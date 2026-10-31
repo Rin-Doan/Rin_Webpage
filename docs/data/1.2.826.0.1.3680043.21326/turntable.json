@@ -1,0 +1,78 @@
+{
+ "azimuthStep": 5,
+ "elevation": 10,
+ "frames": 72,
+ "cols": 12,
+ "sprites": {
+  "vertebra-1": {
+   "file": "turntable/vertebra-1.webp",
+   "size": 200,
+   "pxPerMm": 1.9369681777551933
+  },
+  "vertebra-2": {
+   "file": "turntable/vertebra-2.webp",
+   "size": 200,
+   "pxPerMm": 1.9769893427782992
+  },
+  "vertebra-3": {
+   "file": "turntable/vertebra-3.webp",
+   "size": 200,
+   "pxPerMm": 2.4775503464383264
+  },
+  "vertebra-4": {
+   "file": "turntable/vertebra-4.webp",
+   "size": 200,
+   "pxPerMm": 2.3742841192334696
+  },
+  "vertebra-5": {
+   "file": "turntable/vertebra-5.webp",
+   "size": 200,
+   "pxPerMm": 2.2486038483124586
+  },
+  "vertebra-6": {
+   "file": "turntable/vertebra-6.webp",
+   "size": 200,
+   "pxPerMm": 2.123639030955244
+  },
+  "vertebra-7": {
+   "file": "turntable/vertebra-7.webp",
+   "size": 200,
+   "pxPerMm": 1.7739045185697504
+  },
+  "mask-vertebra-1": {
+   "file": "turntable/mask-vertebra-1.webp",
+   "size": 200,
+   "pxPerMm": 2.116700549827374
+  },
+  "mask-vertebra-2": {
+   "file": "turntable/mask-vertebra-2.webp",
+   "size": 200,
+   "pxPerMm": 1.943184334116378
+  },
+  "mask-vertebra-3": {
+   "file": "turntable/mask-vertebra-3.webp",
+   "size": 200,
+   "pxPerMm": 2.694657532402283
+  },
+  "mask-vertebra-4": {
+   "file": "turntable/mask-vertebra-4.webp",
+   "size": 200,
+   "pxPerMm": 2.550774727870909
+  },
+  "mask-vertebra-5": {
+   "file": "turntable/mask-vertebra-5.webp",
+   "size": 200,
+   "pxPerMm": 2.4997454847889564
+  },
+  "mask-vertebra-6": {
+   "file": "turntable/mask-vertebra-6.webp",
+   "size": 200,
+   "pxPerMm": 2.15483253998957
+  },
+  "mask-vertebra-7": {
+   "file": "turntable/mask-vertebra-7.webp",
+   "size": 200,
+   "pxPerMm": 1.8884627337818187
+  }
+ }
+}

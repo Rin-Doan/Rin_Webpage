@@ -1,0 +1,815 @@
+(function () {
+  "use strict";
+
+  // ======================================================================
+  // Shared easing / tween helpers, used by the hero and Problem-stage
+  // animations below.
+  // ======================================================================
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp01(n) { return Math.max(0, Math.min(1, n)); }
+  function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
+  function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+  // ======================================================================
+  // Case viewer: fetches the manifest + per-case JSON and renders every
+  // Plotly view (CT scan, segmentation mask, per-vertebra classification,
+  // burst-fracture) plus the axial/sagittal slice sliders. This logic is
+  // unchanged from the original single-page demo -- only the surrounding
+  // chrome (sidebar -> topbar case switcher, case-panel -> stage sections)
+  // is new.
+  // ======================================================================
+
+  var caseSwitchEl = document.getElementById("case-switch");
+  var caseLabelEl = document.getElementById("case-label-text");
+
+  var ctPlotEl = document.getElementById("ct-plot");
+  var axialImageEl = document.getElementById("axial-image");
+  var sagittalImageEl = document.getElementById("sagittal-image");
+  var axialSliderEl = document.getElementById("axial-slice-slider");
+  var sagittalSliderEl = document.getElementById("sagittal-slice-slider");
+  var axialReadoutEl = document.getElementById("axial-readout");
+  var sagittalReadoutEl = document.getElementById("sagittal-readout");
+
+  var segMaskPlotEl = document.getElementById("seg-mask-plot");
+  var segAxialCtImageEl = document.getElementById("seg-axial-ct-image");
+  var segAxialMaskImageEl = document.getElementById("seg-axial-mask-image");
+  var segAxialSliderEl = document.getElementById("seg-axial-slider");
+  var segAxialReadoutEl = document.getElementById("seg-axial-readout");
+  var segSagittalCtImageEl = document.getElementById("seg-sagittal-ct-image");
+  var segSagittalMaskImageEl = document.getElementById("seg-sagittal-mask-image");
+  var segSagittalSliderEl = document.getElementById("seg-sagittal-slider");
+  var segSagittalReadoutEl = document.getElementById("seg-sagittal-readout");
+
+  var CLS_VERTEBRA_SLOTS = 7;
+  var clsVertCellEls = [];
+  var clsVertPlotEls = [];
+  var clsVertLabelEls = [];
+  for (var clsI = 0; clsI < CLS_VERTEBRA_SLOTS; clsI++) {
+    clsVertCellEls.push(document.getElementById("cls-vert-cell-" + clsI));
+    clsVertPlotEls.push(document.getElementById("cls-vert-plot-" + clsI));
+    clsVertLabelEls.push(document.getElementById("cls-vert-label-" + clsI));
+  }
+  var clsMaskPlotEl = document.getElementById("cls-mask-plot");
+  var clsNoMaskHintEl = document.getElementById("cls-no-mask-hint");
+  var clsGridEl = document.getElementById("cls-vertebra-grid");
+
+  var burstDualWindowEl = document.getElementById("burst-dual-window");
+  var burstNoFractureHintEl = document.getElementById("burst-no-fracture-hint");
+  var burstLevelSelectEl = document.getElementById("burst-level-select");
+  var burstPlotEl = document.getElementById("burst-3d-plot");
+  var burstCcpImageEl = document.getElementById("burst-ccp-image");
+
+  var manifest = null;
+  var activeCaseId = null;
+  var cache = {};        // case_id -> fetched JSON payload, once loaded
+  var requestToken = 0;  // guards against a slow, stale fetch overwriting a newer click
+
+  function fetchJSON(url) {
+    // "no-store" rather than the default caching: these per-case JSON
+    // files (and the manifest) carry no version query string the way
+    // assets/style.css and assets/app.js now do, so without this the
+    // browser's own HTTP cache can keep serving an old case file -- with
+    // a stale colour, opacity, or mesh -- even after the page itself has
+    // reloaded fresh. This forces every load to actually re-fetch.
+    return fetch(url, { cache: "no-store" }).then(function (res) {
+      if (!res.ok) throw new Error("Failed to load " + url + " (" + res.status + ")");
+      return res.json();
+    });
+  }
+
+  function pad4(n) {
+    var s = String(n);
+    while (s.length < 4) s = "0" + s;
+    return s;
+  }
+
+  // ---- CT scan section: a Plotly binary mask view -- every vertebra mesh
+  //      recoloured to one flat colour (BINARY_MASK_COLOR) rather than its
+  //      own SEG_COLORS shade, so this reads as "bone present here or
+  //      not", not a per-level classification. -------------------------- //
+  var BINARY_MASK_COLOR = "#cfc8bb";
+
+  function binaryMaskTrace(mesh) {
+    return Object.assign({}, mesh, { color: BINARY_MASK_COLOR });
+  }
+
+  function renderCtPlot(data) {
+    if (!data.has_mask) return;
+    var binaryMeshes = data.mask_meshes.map(binaryMaskTrace);
+    Plotly.react(ctPlotEl, binaryMeshes, maskSceneLayout(), { displaylogo: false, responsive: true, displayModeBar: false });
+  }
+
+  function maskSceneLayout() {
+    return {
+      paper_bgcolor: "#f0f3f6", plot_bgcolor: "#f0f3f6",
+      margin: { l: 0, r: 0, t: 10, b: 0 }, showlegend: false,
+      scene: {
+        aspectmode: "data", bgcolor: "#f0f3f6",
+        xaxis: { visible: false },
+        yaxis: { visible: false },
+        zaxis: { visible: false },
+        camera: { eye: { x: 1.4, y: 1.1, z: 1.3 }, up: { x: 0, y: 0, z: 1 } },
+      },
+    };
+  }
+
+  function renderMaskPlot(data) {
+    if (!data.has_mask) return;
+    Plotly.react(segMaskPlotEl, data.mask_meshes, maskSceneLayout(), { displaylogo: false, responsive: true, displayModeBar: false });
+  }
+
+  function smallVertebraSceneLayout() {
+    return {
+      paper_bgcolor: "#f0f3f6", plot_bgcolor: "#f0f3f6",
+      margin: { l: 0, r: 0, t: 0, b: 0 }, showlegend: false,
+      scene: {
+        aspectmode: "data", bgcolor: "#f0f3f6",
+        xaxis: { visible: false }, yaxis: { visible: false }, zaxis: { visible: false },
+        camera: { eye: { x: 1.4, y: 1.1, z: 1.3 }, up: { x: 0, y: 0, z: 1 } },
+      },
+    };
+  }
+
+  var FRACTURE_HIGHLIGHT_COLOR = "#C0392B";
+  var GROUND_TRUTH_NEUTRAL_COLOR = "#cfc8bb";
+
+  function groundTruthTrace(mesh, fracturedLabels) {
+    var isFractured = !!fracturedLabels && fracturedLabels.indexOf(mesh.label) !== -1;
+    return Object.assign({}, mesh, {
+      color: isFractured ? FRACTURE_HIGHLIGHT_COLOR : GROUND_TRUTH_NEUTRAL_COLOR,
+    });
+  }
+
+  function renderClassificationSection(data) {
+    var hasVertebrae = !!data.has_mask && data.mask_meshes && data.mask_meshes.length > 0;
+    clsGridEl.hidden = !hasVertebrae;
+    clsNoMaskHintEl.hidden = hasVertebrae;
+
+    for (var i = 0; i < CLS_VERTEBRA_SLOTS; i++) {
+      var mesh = hasVertebrae ? data.mask_meshes[i] : null;
+      if (mesh) {
+        clsVertCellEls[i].hidden = false;
+        clsVertLabelEls[i].textContent = mesh.name || ("Vertebra " + (i + 1));
+        Plotly.react(clsVertPlotEls[i], [mesh], smallVertebraSceneLayout(),
+          { displaylogo: false, responsive: true, displayModeBar: false });
+      } else {
+        clsVertCellEls[i].hidden = true;
+      }
+    }
+
+    if (hasVertebrae) {
+      var groundTruthMeshes = data.mask_meshes.map(function (m) {
+        return groundTruthTrace(m, data.fractured_labels);
+      });
+      Plotly.react(clsMaskPlotEl, groundTruthMeshes, maskSceneLayout(), { displaylogo: false, responsive: true, displayModeBar: false });
+    }
+  }
+
+  function vertebraLevelName(label) {
+    return "C" + label;
+  }
+
+  function meshByLabel(data, label) {
+    if (!data.mask_meshes) return null;
+    for (var i = 0; i < data.mask_meshes.length; i++) {
+      if (data.mask_meshes[i].label === label) return data.mask_meshes[i];
+    }
+    return null;
+  }
+
+  function burstCcpImageUrl(caseId, label) {
+    return "data/" + caseId + "/burst_fracture/" + vertebraLevelName(label) + ".png";
+  }
+
+  function showBurstLevel(data, label) {
+    var traces = [];
+    [label - 1, label, label + 1].forEach(function (l) {
+      var mesh = meshByLabel(data, l);
+      if (!mesh) return;
+      traces.push(l === label ? Object.assign({}, mesh, { color: FRACTURE_HIGHLIGHT_COLOR }) : mesh);
+    });
+    Plotly.react(burstPlotEl, traces, smallVertebraSceneLayout(), { displaylogo: false, responsive: true, displayModeBar: false });
+    burstCcpImageEl.src = burstCcpImageUrl(data.case_id, label);
+    burstCcpImageEl.alt = "Burst fracture canal compromise at " + vertebraLevelName(label);
+  }
+
+  function renderBurstFractureSection(data) {
+    var levels = (data.fractured_labels || []).slice().sort(function (a, b) { return a - b; });
+    var hasFractures = !!data.has_mask && levels.length > 0;
+    burstDualWindowEl.hidden = !hasFractures;
+    burstNoFractureHintEl.hidden = hasFractures;
+    if (!hasFractures) return;
+
+    burstLevelSelectEl.innerHTML = "";
+    levels.forEach(function (label) {
+      var opt = document.createElement("option");
+      opt.value = String(label);
+      opt.textContent = vertebraLevelName(label);
+      burstLevelSelectEl.appendChild(opt);
+    });
+    burstLevelSelectEl.value = String(levels[0]);
+    showBurstLevel(data, levels[0]);
+  }
+
+  burstLevelSelectEl.addEventListener("change", function () {
+    var data = activeCaseId ? cache[activeCaseId] : null;
+    if (data) showBurstLevel(data, Number(burstLevelSelectEl.value));
+  });
+
+  function sliceImageUrl(caseId, orientation, index) {
+    return "data/" + caseId + "/" + orientation + "/" + pad4(index) + ".png";
+  }
+
+  function createSliceController(sliderEl, images, readoutEl) {
+    var state = { caseId: null, count: 0, hasMask: true };
+
+    function setIndex(index) {
+      sliderEl.value = index;
+      images.forEach(function (img) {
+        if (img.orientation.indexOf("mask_") === 0 && !state.hasMask) return;
+        img.el.src = sliceImageUrl(state.caseId, img.orientation, index);
+      });
+      if (readoutEl) readoutEl.textContent = (index + 1) + " / " + state.count;
+    }
+
+    function configure(data, countKey, defaultKey, widthKey, heightKey) {
+      state.caseId = data.case_id;
+      state.count = data[countKey];
+      state.hasMask = !!data.has_mask;
+      sliderEl.min = 0;
+      sliderEl.max = Math.max(0, state.count - 1);
+      sliderEl.step = 1;
+      sliderEl.disabled = state.count <= 1;
+      images.forEach(function (img) {
+        if (img.orientation.indexOf("mask_") === 0 && !state.hasMask) {
+          img.el.removeAttribute("src");
+          return;
+        }
+        img.el.style.aspectRatio = data[widthKey] + " / " + data[heightKey];
+      });
+      setIndex(data[defaultKey]);
+    }
+
+    sliderEl.addEventListener("input", function () {
+      setIndex(Number(sliderEl.value));
+    });
+
+    return { configure: configure };
+  }
+
+  var axialController = createSliceController(
+    axialSliderEl, [{ el: axialImageEl, orientation: "axial" }], axialReadoutEl);
+  var sagittalController = createSliceController(
+    sagittalSliderEl, [{ el: sagittalImageEl, orientation: "sagittal" }], sagittalReadoutEl);
+  var segAxialController = createSliceController(
+    segAxialSliderEl,
+    [
+      { el: segAxialCtImageEl, orientation: "axial" },
+      { el: segAxialMaskImageEl, orientation: "mask_axial" },
+    ],
+    segAxialReadoutEl);
+  var segSagittalController = createSliceController(
+    segSagittalSliderEl,
+    [
+      { el: segSagittalCtImageEl, orientation: "sagittal" },
+      { el: segSagittalMaskImageEl, orientation: "mask_sagittal" },
+    ],
+    segSagittalReadoutEl);
+
+  // ---- Selecting a case: fetches that case's data (unless already
+  //      cached) and updates the stage sections in place. No navigation,
+  //      no case-panel to show/hide any more -- the stage sections are
+  //      always part of the page. --------------------------------------- //
+
+  function selectCase(caseId) {
+    if (caseId === activeCaseId) return;
+
+    var myToken = ++requestToken;
+    activeCaseId = caseId;
+    if (caseSwitchEl) caseSwitchEl.value = caseId;
+
+    var meta = manifest.cases.find(function (c) { return c.case_id === caseId; });
+    var idx = manifest.cases.indexOf(meta) + 1;
+    var num = String(idx).padStart(2, "0");
+    if (caseLabelEl) caseLabelEl.textContent = "Case " + num + " — loading…";
+
+    if (cache[caseId]) {
+      applyCaseData(cache[caseId], num);
+      return;
+    }
+
+    fetchJSON("data/" + caseId + ".json")
+      .then(function (data) {
+        cache[caseId] = data;
+        if (myToken !== requestToken) return; // a newer pick already won
+        applyCaseData(data, num);
+      })
+      .catch(function (err) {
+        if (myToken !== requestToken) return;
+        if (caseLabelEl) caseLabelEl.textContent = "Case " + num + " — failed to load";
+        console.error(err);
+      });
+  }
+
+  function applyCaseData(data, num) {
+    if (caseLabelEl) caseLabelEl.textContent = "Case " + num + " · " + (data.description || data.case_id);
+    renderCtPlot(data);
+    renderMaskPlot(data);
+    renderClassificationSection(data);
+    renderBurstFractureSection(data);
+    axialController.configure(data, "axial_slice_count", "axial_default_index", "axial_width_mm", "axial_height_mm");
+    sagittalController.configure(data, "sagittal_slice_count", "sagittal_default_index", "sagittal_width_mm", "sagittal_height_mm");
+    segAxialController.configure(data, "axial_slice_count", "axial_default_index", "axial_width_mm", "axial_height_mm");
+    segSagittalController.configure(data, "sagittal_slice_count", "sagittal_default_index", "sagittal_width_mm", "sagittal_height_mm");
+  }
+
+  if (caseSwitchEl) {
+    caseSwitchEl.addEventListener("change", function () {
+      selectCase(caseSwitchEl.value);
+    });
+  }
+
+  // ---- Tabs: each .tab-group (CT scan / Vertebra segmentation) manages
+  //      its own tabs independently via delegation on the whole document,
+  //      since tab-groups now live directly inside stage sections rather
+  //      than one shared case-panel wrapper. ------------------------------ //
+
+  document.addEventListener("click", function (e) {
+    var tabBtn = e.target.closest(".tab");
+    if (!tabBtn) return;
+    var group = tabBtn.closest(".tab-group");
+    var groupName = group.getAttribute("data-group");
+    var tabName = tabBtn.getAttribute("data-tab");
+
+    group.querySelectorAll(".tab").forEach(function (b) { b.classList.remove("active"); });
+    tabBtn.classList.add("active");
+    group.querySelectorAll(".tab-panel").forEach(function (p) { p.hidden = true; });
+    group.querySelector('.tab-panel[data-panel="' + tabName + '"]').hidden = false;
+
+    // Each 3D canvas/plot needs an explicit resize once its container
+    // becomes visible again, since a hidden element reports 0 size and
+    // the renderers skip drawing into it while hidden.
+    if (groupName === "ct" && tabName === "viewer3d") {
+      Plotly.Plots.resize(ctPlotEl);
+    } else if (groupName === "seg" && tabName === "viewer3d") {
+      Plotly.Plots.resize(segMaskPlotEl);
+    }
+  });
+
+  // ======================================================================
+  // Scroll-stage navigation: five sections (intro, problem, segmentation,
+  // classification, triage), a column of nav dots on the right that
+  // highlights whichever stage is most in view, and a topbar that fades
+  // in once the page has scrolled past the hero.
+  // ======================================================================
+
+  var stageEls = Array.prototype.slice.call(document.querySelectorAll(".stage"));
+  var stageDotEls = Array.prototype.slice.call(document.querySelectorAll(".stage-dot"));
+  var topbarEl = document.querySelector(".topbar");
+  var stageNavEl = document.querySelector(".stage-nav");
+
+  stageDotEls.forEach(function (dot) {
+    dot.addEventListener("click", function () {
+      var targetId = dot.getAttribute("data-stage-target");
+      var target = document.getElementById(targetId);
+      if (target) target.scrollIntoView({ behavior: "smooth" });
+    });
+  });
+
+  document.querySelectorAll("[data-stage-target]").forEach(function (el) {
+    if (el.classList.contains("stage-dot")) return; // already wired above
+    el.addEventListener("click", function () {
+      var targetId = el.getAttribute("data-stage-target");
+      var target = document.getElementById(targetId);
+      if (target) target.scrollIntoView({ behavior: "smooth" });
+    });
+  });
+
+  function updateActiveStageFromScroll() {
+    var viewportCenter = window.innerHeight / 2;
+    var current = stageEls[0];
+    var bestDistance = Infinity;
+    stageEls.forEach(function (stage) {
+      var rect = stage.getBoundingClientRect();
+      var stageCenter = rect.top + rect.height / 2;
+      var distance = Math.abs(stageCenter - viewportCenter);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        current = stage;
+      }
+    });
+    var currentId = current.id;
+    stageDotEls.forEach(function (dot) {
+      dot.classList.toggle("active", dot.getAttribute("data-stage-target") === currentId);
+    });
+    if (topbarEl) {
+      topbarEl.classList.toggle("is-visible", currentId !== "stage-intro" || window.scrollY > window.innerHeight * 0.6);
+    }
+    // The nav dots sit over the hero's dark photo collage while stage-intro
+    // is active; .on-photo swaps them to a legible light-on-dark treatment
+    // (see style.css) for just that stretch of scroll.
+    if (stageNavEl) {
+      stageNavEl.classList.toggle("on-photo", currentId === "stage-intro" && window.scrollY < window.innerHeight * 0.9);
+    }
+  }
+
+  // ======================================================================
+  // Hero: a collage of five clinical photographs replaces the old
+  // CT-scanner illustration. Four of the five are buttons wired to a
+  // stage (generically, via the [data-stage-target] listener above); as
+  // the hero scrolls past, each photograph drifts upward at its own
+  // depth (its data-depth attribute) so the collage reads as layered
+  // rather than flat -- the same "track scroll distance directly, no
+  // pinned runway" approach the old patient illustration used.
+  // ======================================================================
+
+  var heroPinEl = document.querySelector(".hero-pin");
+  var heroPhotoEls = Array.prototype.slice.call(document.querySelectorAll(".hero-photo"));
+  var heroParallaxEls = Array.prototype.slice.call(document.querySelectorAll(".hero-photo-parallax"));
+  var heroScrollCueEl = document.querySelector(".stage-intro .scroll-cue");
+  var prefersReducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Each photo's window (not just the picture inside it) idles on its own
+  // slow drift whenever the page is still; the instant the user scrolls,
+  // every one of those is paused in place -- so the idle tilt never
+  // fights the depth-parallax below -- and they quietly resume a moment
+  // after scrolling stops.
+  var heroScrollStopTimer = null;
+  function markHeroScrolling() {
+    if (prefersReducedMotion) return;
+    heroPhotoEls.forEach(function (el) { el.style.animationPlayState = "paused"; });
+    if (heroScrollStopTimer) clearTimeout(heroScrollStopTimer);
+    heroScrollStopTimer = setTimeout(function () {
+      heroPhotoEls.forEach(function (el) { el.style.animationPlayState = "running"; });
+    }, 220);
+  }
+  window.addEventListener("scroll", markHeroScrolling, { passive: true });
+
+  var HERO_PARALLAX_RANGE = 110; // px of drift at depth 1 across the full hero scroll
+
+  // Each photo's window enters on a staggered CSS animation (heroPhotoIn
+  // in style.css). While that's live, the browser gives it priority over
+  // any `animation`/`transform` set from here -- so once it finishes, we
+  // hand the element's `animation` straight to its idle wiggle (heroWiggle,
+  // timed per element via its own data-wiggle-duration/-delay) rather than
+  // just clearing it, so the window keeps drifting instead of going
+  // still. Scroll-depth parallax stays separate, driven on the
+  // .hero-photo-parallax child by applyHeroProgress below.
+  heroPhotoEls.forEach(function (el) {
+    el.addEventListener("animationend", function () {
+      el.style.opacity = "1";
+      if (prefersReducedMotion) {
+        el.style.animation = "none";
+        return;
+      }
+      var duration = el.getAttribute("data-wiggle-duration") || "8s";
+      var delay = el.getAttribute("data-wiggle-delay") || "0s";
+      el.style.animation = "heroWiggle " + duration + " var(--ease-in-out) " + delay + " infinite";
+    }, { once: true });
+  });
+
+  function applyHeroProgress(p) {
+    if (!prefersReducedMotion) {
+      heroParallaxEls.forEach(function (el) {
+        var depth = parseFloat(el.getAttribute("data-depth")) || 0;
+        el.style.transform = "translateY(" + (-p * depth * HERO_PARALLAX_RANGE).toFixed(1) + "px)";
+      });
+    }
+    if (heroScrollCueEl) heroScrollCueEl.style.opacity = String(clamp01(1 - p * 3));
+  }
+
+  var heroRAFQueued = false;
+  function onScrollOrResize() {
+    if (heroRAFQueued) return;
+    heroRAFQueued = true;
+    requestAnimationFrame(function () {
+      heroRAFQueued = false;
+      updateActiveStageFromScroll();
+      if (heroPinEl) {
+        var heroRect = heroPinEl.getBoundingClientRect();
+        var heroProgress = heroRect.height > 0 ? (0 - heroRect.top) / heroRect.height : 0;
+        applyHeroProgress(clamp01(heroProgress));
+      }
+    });
+  }
+  window.addEventListener("scroll", onScrollOrResize, { passive: true });
+  window.addEventListener("resize", onScrollOrResize);
+  onScrollOrResize();
+
+  // ======================================================================
+  // Problem stage: a self-contained "window" that plays a fixed sequence
+  // -- six CT scans arrive scattered, assemble into a row one at a time
+  // (left-to-right arrival filling the row from the right), then stack up
+  // in that same order (not by severity), then are handed to the
+  // radiologist. Loops on repeat once scrolled into view; replayable from
+  // its footer button.
+  // ======================================================================
+
+  var problemScanEls = Array.prototype.slice.call(document.querySelectorAll(".problem-scan"));
+  var problemDoctorEl = document.getElementById("problem-doctor");
+  var problemCaptionEl = document.getElementById("problem-caption");
+  var problemReplayBtn = document.getElementById("problem-replay-btn");
+  var problemWindowEl = document.querySelector(".problem-window");
+  var problemScannerEl = document.getElementById("problem-scanner");
+  var problemScannerPatientEl = document.getElementById("problem-scanner-patient");
+  var problemScannerSharpFadeEl = document.getElementById("problem-scanner-sharp-fade");
+  var problemScannerBlurBandFadeEl = document.getElementById("problem-scanner-blur-band-fade");
+
+  // ---- Opening beat (every loop): the patient is pushed into the
+  //      scanner -- the same hero illustration and mask-dissolve, reused
+  //      at a smaller size inside this window. As the slide finishes, the
+  //      whole illustration (patient, machine and doctor alike) blurs
+  //      out as one, covering a cut to the returned scan, which pops out
+  //      oversized, holds there a moment, then slowly shrinks back down
+  //      into its normal spot at the far right of the scatter (the last
+  //      card, the one that already sits furthest right once scattered).
+  //      After that the scatter/row/stack/handoff sequence below runs
+  //      exactly as it did before this intro was added, just shifted
+  //      later. -----
+  var SCANNER_PHASE = [0, 2000];    // patient slides into the scanner
+  var BLUR_PHASE = [1500, 2000];    // near the end of the slide, everything blurs out together
+  var REVEAL_PHASE = [2000, 3400];  // the returned scan pops out of the blur and zooms in (slow, 1400ms)
+  var HOLD_PHASE = [3400, 3900];    // it holds at that oversized reveal for a beat
+  var SHRINK_PHASE = [3900, 5100];  // then zooms back down to its regular scatter size/position (1200ms)
+  var PROBLEM_INTRO_OFFSET = SHRINK_PHASE[1];
+
+  var SCANNER_PATIENT_TRAVEL_X = 100;
+  var SCANNER_FADE_DELAY = 0.5;
+  var SCANNER_FADE_START_X = 950;
+  var SCANNER_FADE_END_X = 430;
+  // The body disappears outright once it crosses this threshold line (it
+  // sweeps from SCANNER_FADE_START_X down to SCANNER_FADE_END_X as the
+  // patient enters), but not with a hard pixel edge: a narrow band just
+  // ahead of it -- BAND_WIDTH wide -- shows a blurred copy instead, so
+  // that sliver goes soft-focus for a moment before it's gone. FEATHER is
+  // just a tiny antialiasing overlap between the sharp/blurred/gone
+  // zones, not a visible design width.
+  var SCANNER_BAND_WIDTH = 6;
+  var SCANNER_EDGE_FEATHER = 0.75;
+  var SCANNER_BLUR_MAX = 14; // px of CSS blur, at full strength, over the whole mini-scanner illustration
+
+  // Approximate canvas-% position of the scanner's tunnel mouth, where the
+  // emerging scan starts its flight from (the mini scanner SVG is centred
+  // in the canvas at 62% width, viewBox 750x500).
+  var SCANNER_EXIT_X = 59;
+  var SCANNER_EXIT_Y = 45;
+  var EMERGE_CARD_INDEX = 5;  // the card that already sits furthest right once scattered
+  var SCANNER_REVEAL_SCALE = 2.3; // how large the returned scan gets at the peak of its reveal
+
+  function applyScannerIntro(ms) {
+    var scannerT = clamp01(ms / SCANNER_PHASE[1]);
+
+    if (problemScannerPatientEl) {
+      problemScannerPatientEl.setAttribute("transform", "translate(" + (SCANNER_PATIENT_TRAVEL_X * scannerT) + ",0)");
+      var fadeT = clamp01((scannerT - SCANNER_FADE_DELAY) / (1 - SCANNER_FADE_DELAY));
+      var threshold = lerp(SCANNER_FADE_START_X, SCANNER_FADE_END_X, fadeT);
+      var bandStart = threshold - SCANNER_BAND_WIDTH;
+      if (problemScannerSharpFadeEl) {
+        problemScannerSharpFadeEl.setAttribute("x1", String(bandStart - SCANNER_EDGE_FEATHER));
+        problemScannerSharpFadeEl.setAttribute("x2", String(bandStart));
+      }
+      if (problemScannerBlurBandFadeEl) {
+        problemScannerBlurBandFadeEl.setAttribute("x1", String(bandStart - SCANNER_EDGE_FEATHER));
+        problemScannerBlurBandFadeEl.setAttribute("x2", String(threshold + SCANNER_EDGE_FEATHER));
+      }
+    }
+
+    // Whole-scene blur: patient, scanner machine and doctor all live in
+    // the one illustration (#problem-scanner), so a single CSS blur on
+    // that container softens all three together as the slide wraps up,
+    // standing in for a cut to the reveal below rather than jumping to
+    // it outright.
+    var blurT = clamp01((ms - BLUR_PHASE[0]) / (BLUR_PHASE[1] - BLUR_PHASE[0]));
+    var revealT = easeInOutQuad(clamp01((ms - REVEAL_PHASE[0]) / (REVEAL_PHASE[1] - REVEAL_PHASE[0])));
+    var shrinkT = easeInOutQuad(clamp01((ms - SHRINK_PHASE[0]) / (SHRINK_PHASE[1] - SHRINK_PHASE[0])));
+
+    if (problemScannerEl) {
+      problemScannerEl.style.filter = prefersReducedMotion ? "none" : "blur(" + (SCANNER_BLUR_MAX * blurT).toFixed(1) + "px)";
+      // The blurred scanner scene stays put as the backdrop through the
+      // whole reveal + hold -- it's only once the scan starts shrinking
+      // away that the background crossfades over to the other scans.
+      var scannerVisible = ms < SHRINK_PHASE[1];
+      problemScannerEl.style.opacity = scannerVisible ? String(clamp01(1 - shrinkT * 1.4)) : "0";
+    }
+
+    problemScanEls.forEach(function (el, i) {
+      if (i === EMERGE_CARD_INDEX) {
+        // The returned scan: invisible through the blur, then pops out
+        // oversized at the tunnel mouth (a deliberate, slow "here's the
+        // result" zoom-in), holds there, then slowly shrinks back down
+        // to its normal card size while travelling out to its scatter
+        // slot, landing exactly where the ordering sequence expects it.
+        var sx = parseFloat(el.getAttribute("data-sx"));
+        var sy = parseFloat(el.getAttribute("data-sy"));
+        var srot = parseFloat(el.getAttribute("data-srot"));
+
+        var scale, opacity;
+        if (shrinkT > 0) {
+          scale = lerp(SCANNER_REVEAL_SCALE, 1, shrinkT);
+          opacity = 1;
+        } else {
+          scale = lerp(SCANNER_REVEAL_SCALE * 0.35, SCANNER_REVEAL_SCALE, revealT);
+          opacity = revealT;
+        }
+
+        el.style.left = lerp(SCANNER_EXIT_X, sx, shrinkT).toFixed(2) + "%";
+        el.style.top = lerp(SCANNER_EXIT_Y, sy, shrinkT).toFixed(2) + "%";
+        el.style.transform = "rotate(" + (srot * shrinkT).toFixed(1) + "deg) scale(" + scale.toFixed(2) + ")";
+        el.style.opacity = String(opacity);
+      } else {
+        // The other five stay hidden while the scanner scene is still the
+        // backdrop (through the reveal + hold), then fade in together as
+        // the main scan shrinks away -- the background crossfading from
+        // "the scanner" to "the other scans" exactly as it zooms out.
+        el.style.opacity = String(shrinkT);
+      }
+    });
+
+    if (problemCaptionEl) {
+      var text = ms < REVEAL_PHASE[0]
+        ? "A scan is acquired…"
+        : "…and joins the back of the queue.";
+      if (problemCaptionEl.textContent !== text) problemCaptionEl.textContent = text;
+    }
+  }
+
+  // Timeline, in three staggered phases rather than one uniform tween:
+  //  1) Row assembly   - cards leave their scattered spots one at a time,
+  //     in arrival order (index 0 first). Index 0 ("leftmost" on arrival)
+  //     takes the rightmost row slot; each next card takes the slot just
+  //     to its left, so the row fills from the right.
+  //  2) Stack assembly - cards leave the row one at a time in REVERSE
+  //     (rightmost row slot, i.e. index 0, leaves last), so index 0 ends
+  //     up on top of the stack - the row's rightmost card on top.
+  //  3) Handoff        - the whole stack converges on the doctor together.
+  var PROBLEM_CARD_COUNT = 6;
+  var PROBLEM_ROW_STAGGER = 220;
+  var PROBLEM_ROW_MOVE = 480;
+  var PROBLEM_ROW_HOLD = 420;
+  var PROBLEM_STACK_STAGGER = 220;
+  var PROBLEM_STACK_MOVE = 480;
+  var PROBLEM_STACK_HOLD_MS = 500;
+  var PROBLEM_HANDOFF_MOVE = 900;
+  var PROBLEM_END_HOLD_MS = 1300;
+
+  var PROBLEM_ROW_PHASE_START = 0;
+  var PROBLEM_ROW_PHASE_END = PROBLEM_ROW_PHASE_START + (PROBLEM_CARD_COUNT - 1) * PROBLEM_ROW_STAGGER + PROBLEM_ROW_MOVE;
+  var PROBLEM_STACK_PHASE_START = PROBLEM_ROW_PHASE_END + PROBLEM_ROW_HOLD;
+  var PROBLEM_STACK_PHASE_END = PROBLEM_STACK_PHASE_START + (PROBLEM_CARD_COUNT - 1) * PROBLEM_STACK_STAGGER + PROBLEM_STACK_MOVE;
+  var PROBLEM_TO_HANDOFF = [PROBLEM_STACK_PHASE_END + PROBLEM_STACK_HOLD_MS, PROBLEM_STACK_PHASE_END + PROBLEM_STACK_HOLD_MS + PROBLEM_HANDOFF_MOVE];
+  var PROBLEM_END_HOLD = [PROBLEM_TO_HANDOFF[1], PROBLEM_TO_HANDOFF[1] + PROBLEM_END_HOLD_MS];
+  var PROBLEM_LOOP_PAUSE = 900;
+  var PROBLEM_TOTAL_DURATION = PROBLEM_INTRO_OFFSET + PROBLEM_END_HOLD[1];
+
+  var PROBLEM_CAPTIONS = [
+    { at: 0, text: "Six scans arrive in no particular order." },
+    { at: PROBLEM_STACK_PHASE_START, text: "They're stacked in the order they arrived — not by how severe the injury is." },
+    { at: PROBLEM_TO_HANDOFF[0], text: "Only then are they handed to the radiologist, one at a time." },
+  ];
+
+  function cardRowT(ms, i) {
+    var start = PROBLEM_ROW_PHASE_START + i * PROBLEM_ROW_STAGGER;
+    return easeInOutQuad(clamp01((ms - start) / PROBLEM_ROW_MOVE));
+  }
+  function cardStackT(ms, i) {
+    var start = PROBLEM_STACK_PHASE_START + (PROBLEM_CARD_COUNT - 1 - i) * PROBLEM_STACK_STAGGER;
+    return easeInOutQuad(clamp01((ms - start) / PROBLEM_STACK_MOVE));
+  }
+  function segmentT(ms, range) {
+    return easeInOutQuad(clamp01((ms - range[0]) / (range[1] - range[0])));
+  }
+
+  function applyProblemMainFrame(ms) {
+    var toHandoffT = ms < PROBLEM_TO_HANDOFF[0] ? 0 : segmentT(ms, PROBLEM_TO_HANDOFF);
+
+    problemScanEls.forEach(function (el, i) {
+      var sx = parseFloat(el.getAttribute("data-sx"));
+      var sy = parseFloat(el.getAttribute("data-sy"));
+      var srot = parseFloat(el.getAttribute("data-srot"));
+      var rx = parseFloat(el.getAttribute("data-rx"));
+      var ry = parseFloat(el.getAttribute("data-ry"));
+      var mx = parseFloat(el.getAttribute("data-mx"));
+      var my = parseFloat(el.getAttribute("data-my"));
+      var ex = parseFloat(el.getAttribute("data-ex"));
+      var ey = parseFloat(el.getAttribute("data-ey"));
+
+      var rowT = cardRowT(ms, i);
+      var x = lerp(sx, rx, rowT);
+      var y = lerp(sy, ry, rowT);
+      var rot = lerp(srot, 0, rowT);
+
+      var stackT = cardStackT(ms, i);
+      if (stackT > 0) {
+        x = lerp(rx, mx, stackT);
+        y = lerp(ry, my, stackT);
+      }
+
+      var scale = 1;
+      var opacity = 1;
+
+      if (toHandoffT > 0) {
+        // They end up in a small stack next to the doctor and stay there
+        // -- no more fading away once handed off.
+        x = lerp(mx, ex, toHandoffT);
+        y = lerp(my, ey, toHandoffT);
+        scale = lerp(1, 0.55, toHandoffT);
+      }
+
+      el.style.left = x.toFixed(2) + "%";
+      el.style.top = y.toFixed(2) + "%";
+      el.style.transform = "rotate(" + rot.toFixed(1) + "deg) scale(" + scale.toFixed(2) + ")";
+      el.style.opacity = String(opacity);
+    });
+
+    if (problemDoctorEl) {
+      // Right-anchored in CSS now (not centred), so the transform only
+      // needs the entrance lift/scale -- no more translateX(-50%).
+      var entrance = easeOutQuad(toHandoffT);
+      problemDoctorEl.style.opacity = String(entrance);
+      problemDoctorEl.style.transform = "translateY(" + lerp(16, 0, entrance) + "px) scale(" + lerp(0.92, 1, entrance).toFixed(3) + ")";
+    }
+
+    if (problemCaptionEl) {
+      var text = PROBLEM_CAPTIONS[0].text;
+      for (var ci = 0; ci < PROBLEM_CAPTIONS.length; ci++) {
+        if (ms >= PROBLEM_CAPTIONS[ci].at) text = PROBLEM_CAPTIONS[ci].text;
+      }
+      if (problemCaptionEl.textContent !== text) problemCaptionEl.textContent = text;
+    }
+  }
+
+  function applyProblemFrame(ms) {
+    if (ms < PROBLEM_INTRO_OFFSET) {
+      // Main frame first, at its rest (scatter) state, then the intro
+      // overrides card position/opacity on top of it -- applying these in
+      // the other order would let the main frame's full-opacity scatter
+      // state clobber the emerge animation.
+      applyProblemMainFrame(0);
+      applyScannerIntro(ms);
+    } else {
+      if (problemScannerEl) problemScannerEl.style.opacity = "0";
+      applyProblemMainFrame(ms - PROBLEM_INTRO_OFFSET);
+    }
+  }
+  applyProblemFrame(0);
+
+  var problemRAF = null;
+  var problemLoopTimer = null;
+  function stopProblemSequence() {
+    if (problemRAF) { cancelAnimationFrame(problemRAF); problemRAF = null; }
+    if (problemLoopTimer) { clearTimeout(problemLoopTimer); problemLoopTimer = null; }
+  }
+  function playProblemSequence() {
+    stopProblemSequence();
+    var startTime = null;
+    function frame(now) {
+      if (startTime === null) startTime = now;
+      var ms = now - startTime;
+      applyProblemFrame(Math.min(ms, PROBLEM_TOTAL_DURATION));
+      if (ms < PROBLEM_TOTAL_DURATION) {
+        problemRAF = requestAnimationFrame(frame);
+      } else {
+        problemRAF = null;
+        problemLoopTimer = setTimeout(playProblemSequence, PROBLEM_LOOP_PAUSE);
+      }
+    }
+    problemRAF = requestAnimationFrame(frame);
+  }
+
+  if (problemReplayBtn) {
+    problemReplayBtn.addEventListener("click", playProblemSequence);
+  }
+
+  if (problemWindowEl && "IntersectionObserver" in window) {
+    var problemObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          playProblemSequence();
+          problemObserver.disconnect();
+        }
+      });
+    }, { threshold: 0.4 });
+    problemObserver.observe(problemWindowEl);
+  }
+
+  // ======================================================================
+  // Boot: fetch the (tiny) manifest for the case switcher, then load the
+  // first case straight away.
+  // ======================================================================
+
+  fetchJSON("data/manifest.json").then(function (data) {
+    manifest = data;
+    if (caseSwitchEl) {
+      caseSwitchEl.innerHTML = "";
+      manifest.cases.forEach(function (c, idx) {
+        var opt = document.createElement("option");
+        opt.value = c.case_id;
+        opt.textContent = "Case " + String(idx + 1).padStart(2, "0");
+        caseSwitchEl.appendChild(opt);
+      });
+    }
+    if (manifest.cases.length > 0) selectCase(manifest.cases[0].case_id);
+  }).catch(function (err) {
+    if (caseLabelEl) caseLabelEl.textContent = "Could not load case list: " + err.message;
+  });
+})();

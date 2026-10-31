@@ -1,0 +1,986 @@
+:root {
+  /* Medical Blue design system -- clinical, cool, calm. */
+  --bg: #f6fafc;                /* Cool Paper */
+  --panel: #ffffff;
+  --border: #e2eaef;            /* Border Mist, blue cast */
+  --heading: #0a3a52;           /* Clinical Ink */
+  --mat-pad: 0px;               /* width of the border (.scan-mat) around every 3D window; 0 = no border */
+  --heading-hover: #072c3f;     /* Clinical Ink, deeper */
+  --accent-ink: #f6fafc;        /* Cool white, used as "ink" on dark Clinical Ink */
+  --text: #1c2a30;              /* Charcoal, blue cast */
+  --muted: rgba(28, 42, 48, .62);
+  --muted-soft: rgba(28, 42, 48, .4);
+  --accent: #1d7aab;            /* Medical Blue */
+  --accent-soft: #e1f0f7;       /* Sky Wash */
+  --tag-ok: #2f7d52;            /* Reserved for severity-tag "routine" green -- clinical meaning, not brand colour */
+  --danger: #c0392b;
+  --warn: #c98a1b;
+  --plot-bg: #eef4f8;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-display: "Playfair Display", "Cormorant Garamond", Georgia, serif;
+  --font-body: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --scan-bg: #f0f3f6;           /* light grey behind every 3D window (Niivue and Plotly), same as the other plots */
+}
+
+* { box-sizing: border-box; }
+
+/* The [hidden] attribute's default display:none is only the UA
+   stylesheet's lowest-priority rule -- any of our own classes that set
+   their own `display` (grid/flex layouts especially) will otherwise win
+   the cascade and show up as an empty box even while `hidden` is true.
+   This makes `hidden` reliably win everywhere on the page. */
+[hidden] { display: none !important; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.banner {
+  background: var(--heading);
+  color: var(--accent-ink);
+  font-size: 0.78rem;
+  letter-spacing: .02em;
+  text-align: center;
+  padding: 0.4rem 1rem;
+}
+
+/* ---- Floating top bar: hidden over the hero, fades in once the page has
+   scrolled past it, and stays fixed above every stage after that so the
+   brand and the active case are always visible. ------------------------- */
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+  background: rgba(255, 254, 252, .92); backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+  opacity: 0; transform: translateY(-8px); pointer-events: none;
+  transition: opacity .25s ease, transform .25s ease;
+}
+.topbar.is-visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.topbar-inner {
+  max-width: 1200px; margin: 0 auto; padding: .85rem 1.5rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.topbar .brand { font-weight: 700; letter-spacing: .03em; color: var(--heading); font-size: .92rem; }
+.topbar .brand span { font-weight: 400; color: var(--muted); margin-left: .4rem; font-size: .78rem; }
+.topbar-parts { display: flex; align-items: center; gap: 1.4rem; }
+.topbar-part-link {
+  font: inherit; font-family: var(--mono); font-size: .74rem; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--muted-soft); background: none; border: none;
+  cursor: pointer; padding: .3rem .1rem; position: relative; transition: color .2s ease;
+}
+.topbar-part-link:hover { color: var(--heading); }
+.topbar-part-link.active { color: var(--heading); }
+.topbar-part-link.active::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -.4rem; height: 2px;
+  background: var(--accent); border-radius: 2px;
+}
+.case-meta { display: flex; align-items: center; gap: .75rem; }
+.case-meta .case-label { font-family: var(--mono); font-size: .78rem; color: var(--muted); }
+.case-switch {
+  font: inherit; font-size: .82rem; padding: .35rem .6rem; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer;
+}
+
+/* ---- Stage shell: five full-viewport sections the page scrolls through
+   (scroll-snap gives each one a gentle "settle" rather than a hard pin).
+   Generous top padding keeps a stage's own heading clear of the topbar
+   once it has faded in. --------------------------------------------------- */
+.part-anchor { display: block; height: 0; }
+
+html { scroll-snap-type: y proximity; }
+.stage {
+  min-height: 100vh;
+  scroll-snap-align: start;
+  display: flex; align-items: center;
+  padding: 9rem 0 4rem;
+}
+.stage-inner {
+  max-width: 1200px; margin: 0 auto; padding: 0 1.75rem 0 1.5rem; width: 100%;
+}
+.part-eyebrow {
+  font-family: var(--mono); font-size: .72rem; color: var(--accent);
+  letter-spacing: .08em; text-transform: uppercase; margin: 0 0 .5rem;
+}
+.stage-counter {
+  font-family: var(--mono); font-size: .78rem; color: var(--muted-soft);
+  letter-spacing: .06em; margin: 0 0 .6rem;
+}
+.stage-title {
+  font-family: var(--font-display); font-weight: 500; color: var(--heading);
+  font-size: clamp(1.8rem, 3.4vw, 2.6rem); margin: 0 0 1.1rem;
+}
+.stage-lede { color: var(--muted); font-size: 1.05rem; max-width: 62ch; margin: 0 0 2rem; }
+
+/* ---- Intro / hero: a dark Clinical Ink panel carries the headline on the
+   left; the right side is a collage of five real clinical photographs,
+   three full-height columns with two smaller square prints floating over
+   their seam. The collage doubles as navigation -- four of the five
+   photographs are buttons that jump straight to the stage they represent
+   (wired generically through [data-stage-target] in app.js) -- and as the
+   page scrolls past the hero each photograph drifts at its own depth
+   (driven by applyHeroProgress in app.js, using each one's data-depth),
+   the same scroll-tracked technique the old patient illustration used. */
+.stage-intro { padding: 0; }
+.stage-intro .stage-inner { max-width: none; padding: 0; }
+
+.hero-pin { position: relative; }
+.hero-sticky {
+  position: relative; height: 100vh; width: 100%; overflow: hidden;
+  background: var(--heading);
+}
+
+.hero-grid {
+  height: 100%; width: 100%; display: grid;
+  grid-template-columns: minmax(300px, 34%) 1fr;
+}
+
+.hero-text {
+  position: relative; z-index: 3; background: var(--heading);
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 4rem clamp(1.75rem, 4vw, 3.5rem) 6rem;
+  min-width: 0;
+}
+.hero-text .eyebrow {
+  text-transform: uppercase; letter-spacing: .09em; font-size: .7rem;
+  color: var(--accent-soft); font-weight: 500; margin: 0 0 1.2rem;
+  opacity: 0; transform: translateY(14px);
+  animation: heroFadeUp 700ms var(--ease-out) 80ms forwards;
+}
+.hero-text h1 {
+  font-family: var(--font-display); font-weight: 400; font-style: normal;
+  color: var(--accent-ink);
+  font-size: clamp(2.1rem, 3.6vw, 3.1rem); line-height: 1.14; margin: 0 0 1.3rem;
+  letter-spacing: -0.01em;
+  opacity: 0; transform: translateY(18px);
+  animation: heroFadeUp 750ms var(--ease-out) 160ms forwards;
+}
+.hero-text h1 em { font-style: italic; font-weight: 400; }
+.hero-text .byline {
+  color: rgba(246, 250, 252, .68); font-size: .88rem; margin: 0 0 3rem; font-weight: 300;
+  opacity: 0; transform: translateY(14px);
+  animation: heroFadeUp 700ms var(--ease-out) 260ms forwards;
+}
+.hero-text .byline span { color: var(--accent-ink); font-weight: 400; }
+.hero-text .scroll-cue {
+  opacity: 0; transform: translateY(10px);
+  animation: heroFadeUp 600ms var(--ease-out) 360ms forwards;
+}
+@keyframes heroFadeUp { to { opacity: 1; transform: none; } }
+
+.byline { color: var(--muted); font-size: .9rem; margin-top: .5rem; }
+.byline span { color: var(--heading); }
+
+/* Shared by the Problem stage's own scanner-and-patient illustration
+   (id="problem-scanner-patient"): position (transform) is driven
+   per-frame by JS via setAttribute, and blur via the SVG
+   <feGaussianBlur> filter referenced on the element, not a CSS filter
+   (a CSS filter combined with an animated SVG transform on the same
+   element clips/misplaces the blur in some browsers). `transition: none`
+   keeps the CSS transform property's own transition from fighting that
+   attribute-driven animation. */
+.hero-patient-figure { transition: none; }
+
+.hero-text .scroll-cue { position: static; transform: none; align-self: flex-start; color: rgba(246, 250, 252, .62); }
+.hero-text .scroll-cue .chevron { border-color: rgba(246, 250, 252, .5); }
+.hero-text .scroll-cue:hover { color: var(--accent-ink); }
+.hero-text .scroll-cue:hover .chevron { border-color: var(--accent-ink); }
+
+.scroll-cue {
+  position: absolute; left: 50%; bottom: 2.75rem; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: .45rem;
+  background: none; border: none; cursor: pointer; color: var(--muted); font: inherit;
+  font-size: .78rem; letter-spacing: .04em; text-transform: uppercase;
+  transition: opacity .2s ease, color .2s ease;
+}
+.scroll-cue .chevron {
+  width: 9px; height: 9px; border-right: 2px solid var(--muted-soft);
+  border-bottom: 2px solid var(--muted-soft); transform: rotate(45deg);
+  transition: border-color .2s ease;
+}
+
+/* ---- The photo collage. Three full-height columns (one plain, two
+   clickable), plus two square photographs pinned over the seam between
+   the second and third column. Each photo scales and brightens a touch
+   on hover/focus to read as interactive; a small tag names the stage it
+   opens. The `--depth`-driven translateY (see applyHeroProgress in
+   app.js) is applied on top of this layout via inline transform. ------- */
+.hero-photos { position: relative; height: 100%; min-width: 0; overflow: hidden; perspective: 1700px; }
+
+/* Each photo now sits in its own absolutely-positioned "slot": the slot
+   alone carries placement (left/top/width/height, gutters between
+   columns, the staggered vertical offsets) and the static vertical-axis
+   tilt (rotateY) that gives the collage a slight fanned, 3D depth. That
+   keeps this one-off transform completely separate from the .hero-photo
+   window's own animated transform (entrance + idle wiggle) below, so
+   the two never overwrite one another -- the tilt is just the resting
+   stage the window's own motion plays on top of. */
+/* --tilt is each slot's static fanned-out rotation (set per slot below);
+   --scroll-rise is the live, scroll-driven lift (app.js, applyHeroProgress)
+   that carries the whole window -- frame and picture together -- upward as
+   the hero scrolls past, and straight back to 0px when scrolling back up,
+   since it's set from the scroll position every frame rather than played
+   once. Composed into one transform so neither has to clobber the other. */
+.hero-photo-slot {
+  position: absolute;
+  transform: rotateY(var(--tilt, 0deg)) translateY(var(--scroll-rise, 0px));
+}
+
+/* The window itself -- the clipped rectangle (or, for the two floating
+   photos, the rounded card) -- is what moves: it enters with a
+   scale/fade (heroPhotoIn), then once that finishes app.js hands its
+   `animation` straight to heroWiggle below, so the whole frame drifts
+   and tilts as one piece against its static neighbours, not just the
+   picture inside a fixed window. Scroll-depth parallax (applyHeroProgress
+   in app.js) stays on the separate .hero-photo-parallax child instead,
+   so the two movements never fight over the same element's transform. */
+.hero-photo {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0;
+  border: none; background: none; cursor: default; display: block;
+  overflow: hidden; font: inherit;
+  opacity: 0; transform: scale(.96);
+  animation: heroPhotoIn 650ms var(--ease-out) forwards;
+}
+@keyframes heroPhotoIn { to { opacity: 1; transform: none; } }
+
+/* Idle life: once settled, each window drifts and tilts on its own slow,
+   independent loop (app.js reads the duration/delay below off each
+   element's data-wiggle-* attributes, so they never move in sync); the
+   instant the page scrolls, app.js pauses every one of these in place
+   and the parallax child below takes over, resuming a moment after
+   scrolling stops. */
+@keyframes heroWiggle {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  25% { transform: translate3d(0, -4px, 0) rotate(-0.4deg); }
+  52% { transform: translate3d(0, 3px, 0) rotate(0.3deg); }
+  78% { transform: translate3d(0, -2px, 0) rotate(0.35deg); }
+}
+
+/* Overscanned so the scroll-parallax translate never exposes an empty
+   edge inside the (now also moving) window above; the tag below is
+   positioned against the outer .hero-photo instead, so it stays put. */
+.hero-photo-parallax { position: absolute; inset: -6% 0; height: 112%; }
+
+.hero-photo img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  transition: transform 600ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+button.hero-photo { cursor: pointer; }
+button.hero-photo:hover img,
+button.hero-photo:focus-visible img { transform: scale(1.06); }
+button.hero-photo:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: -2px; }
+
+/* The anchor photo is plain, non-interactive (no click-to-stage target) --
+   it just needs to feel alive on hover, so instead of the zoom-in the
+   clickable windows get, it eases back a touch, as if settling away from
+   the cursor rather than inviting a click. */
+.hero-photo-anchor:hover img { transform: scale(0.94); }
+
+.hero-photo-anchor { animation-delay: 0ms; border-radius: 22px; }
+.hero-photo-seg { animation-delay: 90ms; border-radius: 22px; }
+.hero-photo-tri { animation-delay: 150ms; border-radius: 22px; }
+
+/* Placement: a gutter between each of the three back columns, a margin
+   of air above and below so none of them touch the hero's edges, and a
+   deliberate stagger in top/height so they don't all line up -- the
+   middle (segmentation) column rides noticeably higher, the right
+   (triage) column sits a touch lower, breaking the straight row. Each
+   also gets a static rotateY tilt (paired with .hero-photos' perspective
+   above) so the three read as gently fanned rather than flat-on. */
+.hero-photo-slot-anchor { left: 0%; width: 36.5%; top: 7%; height: 86%; --tilt: 6deg; }
+.hero-photo-slot-seg { left: 39%; width: 28%; top: 1.5%; height: 80%; --tilt: 1.5deg; }
+.hero-photo-slot-tri { left: 70%; width: 29%; top: 10%; height: 82%; --tilt: -6deg; }
+
+.hero-photo-tag {
+  position: absolute; left: .9rem; bottom: .9rem; z-index: 2;
+  color: var(--accent-ink); font-size: .76rem; letter-spacing: .02em;
+  font-weight: 500; opacity: 0; transform: translateY(6px);
+  transition: opacity 220ms ease, transform 220ms ease;
+  text-shadow: 0 1px 10px rgba(5, 15, 20, .55);
+}
+button.hero-photo:hover .hero-photo-tag,
+button.hero-photo:focus-visible .hero-photo-tag { opacity: 1; transform: translateY(0); }
+
+.hero-photo-float {
+  border-radius: 18px; box-shadow: 0 18px 40px rgba(5, 25, 36, .28);
+}
+.hero-photo-prob { animation-delay: 260ms; }
+.hero-photo-cls { animation-delay: 320ms; }
+.hero-photo-float .hero-photo-tag { left: .75rem; bottom: .75rem; font-size: .7rem; }
+
+.hero-photo-slot-prob,
+.hero-photo-slot-cls { bottom: 7%; height: 29%; z-index: 2; }
+.hero-photo-slot-prob { left: 35%; width: 24%; --tilt: 4deg; }
+.hero-photo-slot-cls { left: 62%; width: 25%; --tilt: -4deg; }
+
+@media (max-width: 1000px) {
+  .hero-grid { grid-template-columns: 1fr; grid-template-rows: auto 46vh; }
+  .hero-sticky { height: auto; min-height: 100vh; }
+  .hero-text { padding: 3.25rem 1.5rem 2.5rem; }
+  .hero-text .scroll-cue { display: none; }
+  /* Shorter row on tablet/mobile: tone the stagger and tilt down so
+     nothing clips out of the smaller strip. */
+  .hero-photo-slot-anchor { top: 4%; height: 92%; --tilt: 4deg; }
+  .hero-photo-slot-seg { top: 1%; height: 88%; --tilt: 1deg; }
+  .hero-photo-slot-tri { top: 6%; height: 88%; --tilt: -4deg; }
+  .hero-photo-slot-prob,
+  .hero-photo-slot-cls { bottom: 4%; height: 30%; }
+  .hero-photo-slot-prob { --tilt: 3deg; }
+  .hero-photo-slot-cls { --tilt: -3deg; }
+}
+@media (max-width: 620px) {
+  .hero-grid { grid-template-rows: auto 56vh; }
+  .hero-photo-slot-anchor { width: 40%; }
+  .hero-photo-slot-seg { left: 42%; width: 28%; }
+  .hero-photo-slot-tri { left: 72%; width: 28%; }
+  .hero-photo-slot-prob { left: 30%; width: 27%; }
+  .hero-photo-slot-cls { left: 59%; width: 28%; }
+}
+
+/* ---- Content stages (Segmentation / Classification / Triage) share the
+   same window / plot building blocks the case viewer always used -- only
+   the surrounding stage chrome is new. ---------------------- */
+.stage-content .stage-inner { max-width: 1200px; }
+
+.hu-label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .35rem; }
+.hu-label span { font-family: var(--mono); color: var(--text); font-weight: 600; }
+
+.plot { height: 520px; width: 100%; border-radius: 14px; overflow: hidden; background: var(--plot-bg); position: relative; }
+.plot canvas { display: block; max-width: 100%; }
+
+.plot-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  flex-wrap: wrap; margin-top: .6rem;
+}
+.hint { color: var(--muted-soft); font-size: .8rem; margin: 0; }
+
+.replay-btn {
+  flex-shrink: 0; background: none; border: 1px solid var(--border); color: var(--heading);
+  border-radius: 14px; padding: .4rem .9rem; font: inherit; font-size: .78rem;
+  cursor: pointer; white-space: nowrap; transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.replay-btn:hover { background: var(--heading-hover); color: var(--accent-ink); border-color: var(--heading-hover); }
+
+.slice-wrap {
+  background: var(--plot-bg); border-radius: 14px; padding: .75rem;
+  display: flex; align-items: center; justify-content: center; min-height: 360px;
+}
+.slice-wrap img { max-width: 100%; max-height: 520px; height: auto; width: auto; display: block; image-rendering: pixelated; }
+
+.dual-window {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.1rem;
+}
+.window { min-width: 0; }
+.window-label {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted-soft); margin: 0 0 .5rem; font-weight: 600; font-family: var(--mono);
+}
+.dual-window .plot { height: 420px; width: 100%; }
+.dual-window .slice-wrap { min-height: 300px; }
+
+/* ---- 3D windows: the frame, canvas and run button shared by the
+   Segmentation and Classification sections. ---- */
+/* Wrapper around each 3D window's .scan-frame. Borderless by default (--mat-pad: 0); raise --mat-pad to bring a border back. Niivue never touches this div. */
+.scan-mat { background: var(--scan-bg); border-radius: 12px; padding: var(--mat-pad); overflow: hidden; }
+/* The canvas's DIRECT parent -- Niivue (isResizeCanvas) sets this canvas's
+   inline style.width/height to "100%" and paints *this* div's background
+   black, both overriding any CSS on the canvas itself, so the actual pixel
+   size has to live here (a percentage height needs a parent with an
+   explicit height) -- not on .hu-niivue-canvas. Its own black background is
+   irrelevant: the canvas fills it completely. */
+.scan-frame { height: 520px; border-radius: 12px; overflow: hidden; }
+/* Niivue sets this div's background to black inline; with no border
+   around the window that black shows as dark arcs on the antialiased
+   rounded corners, so match it to the window background instead. */
+.scan-frame { background-color: var(--scan-bg) !important; }
+.hu-niivue-canvas.preprocess-niivue-canvas { cursor: default; pointer-events: none; }
+
+/* ---- Model overview: a static row of four windows (reusing the shared
+   .window/.plot/.scan-mat/.scan-frame machinery above, just shorter since
+   there are four of them) connected by simple chevron arrows, summarising
+   the whole pipeline before the detailed per-stage sections below it. */
+.model-pipeline {
+  display: flex; align-items: center; justify-content: center;
+  gap: .85rem; flex-wrap: wrap; margin-top: 1.75rem;
+}
+.model-pipeline-step { flex: 1 1 210px; max-width: 260px; min-width: 0; }
+.model-pipeline-window .scan-frame,
+.model-pipeline-window .plot { height: 230px; }
+.model-pipeline-window .plot { pointer-events: none; }
+.model-pipeline-arrow {
+  flex: 0 0 auto; align-self: center; width: 9px; height: 9px;
+  border-right: 2px solid var(--border); border-bottom: 2px solid var(--border);
+  transform: rotate(-45deg);
+}
+@media (max-width: 900px) {
+  .model-pipeline { flex-direction: column; }
+  .model-pipeline-step { max-width: 360px; width: 100%; }
+  .model-pipeline-arrow { transform: rotate(45deg); }
+}
+
+/* Three stage boxes under the windows: the same clinical paper, ink and
+   mono counters as the rest of the page, joined by chevrons so they read
+   as the process (segmentation → classification → triage). Each one is a
+   button that scrolls to that stage. Hover fills the box with Clinical
+   Ink, the same inversion the run buttons and the hero already use. */
+.model-flow {
+  display: flex; align-items: stretch; justify-content: center;
+  gap: .7rem; margin-top: 1.6rem;
+}
+.model-flow-step {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start; gap: .35rem;
+  text-align: left; font: inherit; color: var(--text);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 1rem 1.15rem 1.05rem; cursor: pointer;
+  transition: background-color 180ms var(--ease-out), border-color 180ms var(--ease-out),
+              color 180ms var(--ease-out), transform 180ms var(--ease-out);
+}
+.model-flow-kicker {
+  font-family: var(--mono); font-size: .72rem; letter-spacing: .08em;
+  color: var(--accent); font-weight: 500;
+}
+.model-flow-title {
+  font-family: var(--font-display); font-weight: 500; font-size: 1.35rem;
+  line-height: 1.2; color: var(--heading); letter-spacing: -0.01em;
+}
+.model-flow-desc {
+  color: var(--muted); font-size: .9rem; line-height: 1.45;
+}
+.model-flow-step:hover,
+.model-flow-step:focus-visible {
+  background: var(--heading); border-color: var(--heading); color: var(--accent-ink);
+  transform: translateY(-2px);
+}
+.model-flow-step:hover .model-flow-kicker,
+.model-flow-step:focus-visible .model-flow-kicker { color: var(--accent-soft); }
+.model-flow-step:hover .model-flow-title,
+.model-flow-step:focus-visible .model-flow-title { color: var(--accent-ink); }
+.model-flow-step:hover .model-flow-desc,
+.model-flow-step:focus-visible .model-flow-desc { color: rgba(246, 250, 252, .72); }
+.model-flow-step:active { transform: translateY(0) scale(0.99); }
+.model-flow-step:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.model-flow-arrow {
+  flex: 0 0 auto; align-self: center; width: 9px; height: 9px;
+  border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent);
+  transform: rotate(-45deg); opacity: .75;
+}
+@media (max-width: 900px) {
+  .model-flow { flex-direction: column; align-items: center; }
+  .model-flow-step { width: 100%; max-width: 420px; }
+  .model-flow-arrow { transform: rotate(45deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .model-flow-step { transition: none; }
+  .model-flow-step:hover,
+  .model-flow-step:focus-visible,
+  .model-flow-step:active { transform: none; }
+}
+
+.preprocess-window-footer {
+  display: flex; flex-direction: column; gap: .6rem; margin-top: 1rem;
+}
+
+/* The run button under each section's windows: disabled while a run plays,
+   green (aria-pressed) once it's done. */
+.preprocess-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 100%; height: 52px; border: none; border-radius: 10px;
+  background: #093a52; color: #ffffff;
+  font: inherit; font-size: .9rem; font-weight: 600;
+  cursor: pointer;
+  transition: background 200ms var(--ease-out), transform 160ms var(--ease-out), opacity 200ms ease;
+}
+.preprocess-btn:hover:not(:disabled) { background: #0c4a68; }
+.preprocess-btn:active:not(:disabled) { transform: scale(0.99); }
+.preprocess-btn:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+.preprocess-btn:disabled { cursor: progress; opacity: .75; }
+.preprocess-btn[aria-pressed="true"] { background: var(--tag-ok); }
+.preprocess-btn[aria-pressed="true"]:hover:not(:disabled) { background: var(--tag-ok); }
+
+/* ---- Segmentation: up to five windows in one row (original -> HU
+   windowed -> spine region -> binary -> instance; see seg-overview-demo.js).
+   Every column shares one width, --ov-col, sized from how many columns are
+   open (--ov-n, set in JS) so the row always fits: up to three open columns
+   get 360px, five shrink to share the space. Columns open and close with a
+   "making room" reveal, using margins on both sides rather than a flex gap
+   so a collapsed column takes up no room at all and the row can still
+   wrap on narrower screens. 26rem in --ov-avail leaves room for the page
+   gutters on either side. */
+.seg-overview-window {
+  --ov-n: 2;
+  --ov-avail: min(calc(100vw - 26rem), 1128px);
+  --ov-col: clamp(140px, calc((var(--ov-avail) - (var(--ov-n) - 1) * 1.5rem) / var(--ov-n)), 360px);
+  max-width: none;
+}
+.seg-overview-scans { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+.seg-overview-col {
+  flex: 0 0 auto; width: var(--ov-col);
+  max-width: 0; max-height: 0; opacity: 0; overflow: hidden; margin: 0;
+  transition: width 420ms var(--ease-in-out), max-width 420ms var(--ease-in-out), max-height 420ms var(--ease-in-out),
+              margin 420ms var(--ease-in-out), opacity 280ms var(--ease-out) 140ms;
+}
+.seg-overview-col.is-open { max-width: var(--ov-col); max-height: 1000px; opacity: 1; margin: 0 .75rem 1rem; }
+/* The instance window's slow fade-out before the run starts; it only
+   collapses once this has finished (seg-overview-demo.js). */
+.seg-overview-col.is-open.is-fading { opacity: 0; transition: opacity 700ms var(--ease-in-out); }
+.seg-overview-col .window-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Frames get shorter as the columns narrow, so five-up windows stay
+   roughly portrait instead of becoming tall slivers: Niivue fits its
+   volume to the frame's narrow side, and in a sliver the scan shrinks to
+   a speck while the meshes beside it overflow. */
+.seg-overview-window .scan-mat .scan-frame {
+  height: clamp(260px, calc(var(--ov-col) * 1.3), 440px);
+  background: var(--scan-bg, #f0f3f6);
+  transition: height 420ms var(--ease-in-out);
+}
+.seg-overview-footer { max-width: 500px; margin: .25rem auto 0; }
+
+/* The two mesh plots are drawn at a fixed 360 x 440 (app.js) -- the
+   largest a column's frame gets -- centred in their frame, which clips
+   them. A column can narrow or widen without the plot being resized (see
+   scan-viewers.js for why that matters). pointer-events: none turns off
+   drag, zoom and hover, as on the Niivue canvases. */
+.seg-overview-window .scan-frame { position: relative; }
+.plot.seg-plot {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 360px; height: 440px; border-radius: 0;
+  background: var(--scan-bg); pointer-events: none;
+}
+
+/* ---- Classification stage (see cls-demo.js) ------------------------------
+   Two layouts, one container. Row mode (.cls-stage without .is-grid): the
+   spine-region window and the right-hand window side by side, centred,
+   360px each like the Segmentation windows. Grid mode (.is-grid): the
+   section's resting layout -- the per-vertebra grid on the left (1.4fr)
+   and the right-hand window (1fr). Switching between them animates the
+   two columns' widths, which is what slides the right-hand window over to
+   the far right. The right-hand window is one element throughout: fracture
+   status, then the instance segmentation, then fracture status again. */
+.cls-stage {
+  --cls-col: min(360px, calc(50vw - 2.5rem));
+  --cls-move: 700ms;
+  position: relative; display: flex; justify-content: center; align-items: flex-start;
+}
+.cls-left, .cls-right { flex: 0 0 auto; min-width: 0; transition: width var(--cls-move) var(--ease-in-out), margin var(--cls-move) var(--ease-in-out); }
+.cls-left { width: var(--cls-col); }
+.cls-right { width: var(--cls-col); margin-left: 1.5rem; overflow: hidden; }
+.cls-stage.is-grid .cls-left { width: calc((100% - 1.1rem) * 1.4 / 2.4); }
+.cls-stage.is-grid .cls-right { width: calc((100% - 1.1rem) / 2.4); margin-left: 1.1rem; }
+.cls-right.is-collapsed { width: 0; margin-left: 0; }
+/* Hidden in row mode but still laid out (not display: none), so its plots
+   are created with a real size rather than none. */
+.cls-stage:not(.is-grid) .vertebra-grid { position: absolute; left: 0; top: 0; width: 100%; visibility: hidden; pointer-events: none; }
+.cls-stage.is-grid .cls-spine { display: none; }
+
+/* Fades: windows "gradually disappear" by opacity first, and only then
+   collapse or leave the layout (cls-demo.js sequences the two). */
+.cls-spine, .cls-right, .vertebra-cell { transition-property: width, margin, opacity, transform; }
+.cls-spine { transition: opacity 700ms var(--ease-in-out); }
+.cls-right { transition: width var(--cls-move) var(--ease-in-out), margin var(--cls-move) var(--ease-in-out), opacity 700ms var(--ease-in-out); }
+.cls-spine.is-faded, .cls-right.is-faded { opacity: 0; }
+
+.cls-frame {
+  position: relative; height: 440px; border-radius: 12px; overflow: hidden;
+  background: var(--scan-bg); transition: height var(--cls-move) var(--ease-in-out);
+}
+.cls-stage.is-grid .cls-right .cls-frame { height: 472px; }
+/* Fixed-size plots, centred and clipped by their frames (app.js's
+   FIXED_PLOT_SIZE; see scan-viewers.js): the right-hand window is drawn
+   big enough for both layouts, so switching layout never resizes it. */
+.cls-frame > .plot {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 500px; height: 472px; border-radius: 0;
+}
+
+.vertebra-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem;
+}
+.vertebra-cell { min-width: 0; transition: opacity 500ms var(--ease-out), transform 500ms var(--ease-out); }
+.vertebra-cell.is-pending { opacity: 0; transform: scale(.85); }
+.vertebra-cell .window-label { text-align: center; }
+/* The whole cell flies to the AI figure (cls-demo.js), so nothing needs to
+   escape the frame. */
+.cls-cell-frame { position: relative; height: 150px; border-radius: 12px; overflow: hidden; background: var(--scan-bg); }
+
+/* Turntable sprites (pre-rendered mask and CT, see
+   scripts/render_turntable_sprites.mjs), drawn onto a canvas by cls-demo.js. */
+.turntable { position: absolute; inset: 0; overflow: hidden; border-radius: 12px; background: var(--scan-bg); }
+.turntable > canvas { display: block; width: 100%; height: 100%; }
+/* The mask sprite holds a fixed angle (cls-demo.js) rather than turning --
+   at only 72 frames, cycling it read as a choppy step instead of a spin.
+   This gentle float keeps the window feeling alive without that. Each cell
+   gets its own negative delay, so the seven never bob in lockstep. */
+@keyframes clsVertMaskFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.cls-vert-mask {
+  z-index: 1;
+  transition: opacity 500ms var(--ease-in-out);
+}
+.cls-vert-mask > canvas { animation: clsVertMaskFloat 4.4s var(--ease-in-out) infinite; }
+#cls-vert-cell-0 .cls-vert-mask > canvas { animation-delay: 0s; }
+#cls-vert-cell-1 .cls-vert-mask > canvas { animation-delay: -.6s; animation-duration: 4.8s; }
+#cls-vert-cell-2 .cls-vert-mask > canvas { animation-delay: -1.3s; animation-duration: 4s; }
+#cls-vert-cell-3 .cls-vert-mask > canvas { animation-delay: -2s; animation-duration: 4.6s; }
+#cls-vert-cell-4 .cls-vert-mask > canvas { animation-delay: -2.7s; animation-duration: 4.2s; }
+#cls-vert-cell-5 .cls-vert-mask > canvas { animation-delay: -3.4s; animation-duration: 4.9s; }
+#cls-vert-cell-6 .cls-vert-mask > canvas { animation-delay: -1.9s; animation-duration: 4.1s; }
+.cls-vert-mask.is-faded { opacity: 0; }
+.cls-vert-ct {
+  opacity: 0; z-index: 2;
+  transition: opacity 500ms var(--ease-in-out), transform 1000ms var(--ease-in-out);
+}
+.cls-vert-ct.is-shown { opacity: 1; }
+/* A vertebra window on its way to the AI figure (cls-demo.js sets the
+   transform and transitions inline). Raised above the other windows, with
+   a shadow to lift it off the page while it's in the air. */
+.vertebra-cell.is-flying { position: relative; z-index: 20; }
+.vertebra-cell.is-flying .cls-cell-frame { box-shadow: 0 10px 28px rgba(10, 58, 82, .28); border-radius: 12px; }
+
+/* Every Classification window is driven by cls-demo.js's turntable, not
+   the mouse. */
+.cls-stage .plot { pointer-events: none; }
+/* Plotly gives its WebGL container a very high z-index; without a stacking
+   context of its own, every plot painted over the vertebra windows flying
+   past it, so a flight looked like a plain fade. z-index 0 here caps it. */
+.cls-stage .plot { z-index: 0; }
+
+.cls-footer { max-width: 500px; margin: 1.25rem auto 0; }
+
+/* The AI figure: a copy of the Solution section's (cls-demo.js clones it,
+   renaming its ids with a -cls suffix), with the same idle float and the
+   same "working" motion while it predicts. Positioned in px by JS: first
+   over the right-hand window, then the middle of the stage. */
+.cls-ai {
+  position: absolute; left: 0; top: 0; width: 0; opacity: 0; z-index: 10;
+  transform: translate(-50%, -50%); pointer-events: none;
+  transition: left 1s var(--ease-in-out), top 1s var(--ease-in-out), width 1s var(--ease-in-out), opacity 700ms var(--ease-out);
+}
+.cls-ai.is-visible { opacity: 1; }
+.cls-ai svg { width: 100%; height: auto; display: block; }
+.cls-ai.is-visible #freepik--Brain--inject-244-cls { transform-box: fill-box; transform-origin: 50% 50%; animation: solutionAiFloatBrain 3.2s ease-in-out infinite; }
+.cls-ai.is-visible #freepik--Charts--inject-244-cls { transform-box: fill-box; transform-origin: 50% 50%; animation: solutionAiFloatCharts 3.6s ease-in-out infinite; }
+.cls-ai.is-active #freepik--Brain--inject-244-cls { animation: solutionAiShakeBrain .5s ease-in-out infinite; }
+.cls-ai.is-active #freepik--Charts--inject-244-cls { animation: solutionAiBounceCharts .6s ease-in-out infinite; }
+.cls-ai.is-active #freepik--Character--inject-244-cls { transform-box: fill-box; transform-origin: 50% 100%; animation: solutionAiWiggleA .8s ease-in-out infinite; }
+.cls-ai.is-active #freepik--character-2--inject-244-cls { transform-box: fill-box; transform-origin: 50% 100%; animation: solutionAiWiggleB .9s ease-in-out infinite; }
+
+/* ---- Shared by every Niivue scan window (Segmentation and
+   Classification): the window and its canvas. ---- */
+.hu-niivue-canvas {
+  display: block; width: 100%; height: 100%; border-radius: 14px;
+  background: var(--scan-bg); cursor: grab;
+}
+.hu-niivue-canvas:active { cursor: grabbing; }
+
+/* ---- Triage / burst fracture stage ---- */
+.level-select {
+  display: block; width: 100%; margin-bottom: .75rem; padding: .5rem .6rem;
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; font: inherit; font-size: .9rem;
+}
+/* Turns on its own idle turntable (app.js), the same as every other mesh
+   window on the page, so drag/zoom are off here too (see scan-viewers.js). */
+#burst-3d-plot { pointer-events: none; }
+.burst-ccp-wrap { min-height: 420px; }
+.burst-ccp-wrap img { max-height: 760px; }
+
+/* ---- Problem stage ---- */
+/* A small self-contained "window", matching the site's other plot windows
+   in weight (same panel tone, radius, hint + replay-btn footer), that
+   plays a short fixed sequence rather than tracking scroll: six CT scans
+   arrive scattered, gather into a row one at a time (left-to-right
+   arrival filling the row from the right), then assemble into a plain
+   stack in that same order (deliberately not sorted by severity), then
+   are handed off to the radiologist together. It loops on repeat once
+   the window scrolls into view and can be replayed from its footer
+   button (see playProblemSequence in app.js). */
+.stage-problem .stage-inner { max-width: 1200px; }
+.problem-copy { color: var(--muted); font-size: 1.05rem; max-width: 56ch; margin: 0 0 2.5rem; }
+
+.problem-window { max-width: none; }
+
+.problem-canvas {
+  position: relative; width: 100%; height: 520px;
+  background: var(--plot-bg); border-radius: 14px; overflow: hidden;
+}
+
+/* Opening beat, each loop: the patient is pushed into the scanner (the
+   same hero illustration, reused at a smaller size), then a scan "comes
+   back" and settles at the far right of the scatter -- after that the
+   scatter/stack/handoff sequence below runs exactly as it did before this
+   was added, just shifted later in the timeline. Hidden (opacity 0) once
+   the scatter/stack part takes over. */
+.problem-scanner {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  transition: none; /* opacity driven per-frame by JS */
+}
+.problem-scanner-svg-wrap { width: 62%; }
+.problem-scanner-svg-wrap svg { width: 100%; height: auto; display: block; }
+
+.problem-doctor {
+  position: absolute; right: 3%; bottom: 0; width: 40%;
+  transition: none; /* opacity/transform driven per-frame by JS */
+}
+.problem-doctor svg { width: 100%; height: auto; display: block; }
+.problem-doctor-figure { transition: none; }
+
+.problem-scans { position: absolute; inset: 0; }
+.problem-scan {
+  position: absolute; width: 16%; aspect-ratio: 92 / 72;
+  transition: none; /* position/rotation/scale/opacity driven per-frame by JS */
+}
+.problem-scan svg { width: 100%; height: 100%; display: block; }
+.problem-scan-tag-red { fill: var(--danger); }
+.problem-scan-tag-yellow { fill: var(--warn); }
+.problem-scan-tag-green { fill: var(--tag-ok); }
+
+/* ---- Footer: the one deliberately dark, Forest Ink band, bookending the
+   light cream body with the brand's strongest colour. -------------------- */
+.page-footer {
+  border-top: 1px solid var(--border); padding: 3rem 0 4rem; background: var(--heading);
+  color: var(--accent-ink);
+}
+.page-footer .brand { color: var(--accent-ink); }
+.page-footer .brand span { color: rgba(255,254,252,.6); }
+.footer-inner { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }
+.page-footer p { color: rgba(255,254,252,.75); max-width: 680px; }
+.page-footer .byline span { color: rgba(255,254,252,.9); }
+
+@media (max-width: 900px) {
+  .seg-overview-window { --ov-avail: calc(100vw - 4rem); }
+  .stage-inner { padding: 0 1.25rem; }
+    }
+
+@media (max-width: 760px) {
+  .topbar-inner { flex-wrap: wrap; }
+  .stage { padding: 7rem 0 3rem; }
+  .stage-intro { padding: 0; }
+  .plot { height: 380px; }
+  .problem-canvas { height: 380px; }
+  .slice-wrap { min-height: 260px; }
+  .dual-window { grid-template-columns: 1fr; }
+  .dual-window .plot { height: 320px; }
+  .dual-window .slice-wrap { min-height: 220px; }
+  .cls-stage.is-grid { flex-direction: column; }
+  .cls-stage.is-grid .cls-left, .cls-stage.is-grid .cls-right { width: 100%; margin-left: 0; }
+  .cls-stage.is-grid .cls-right { margin-top: 1rem; }
+  .cls-frame, .cls-stage.is-grid .cls-right .cls-frame { height: 320px; }
+  .scan-frame { height: 320px; }
+  .vertebra-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cls-cell-frame { height: 110px; }
+  .burst-ccp-wrap { min-height: 260px; }
+  .burst-ccp-wrap img { max-height: 480px; }
+  .plot-footer { flex-direction: column; align-items: flex-start; }
+  .preprocess-window-footer { flex-direction: column; align-items: stretch; }
+  /* The Segmentation windows stack vertically on phones. */
+  .seg-overview-window { --ov-col: min(500px, calc(100vw - 2.5rem)); }
+  .seg-overview-scans { flex-direction: column; align-items: center; flex-wrap: nowrap; }
+  .seg-overview-col.is-open { margin: 0 0 1.25rem; }
+  .seg-overview-window .scan-mat .scan-frame { height: 320px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-text .eyebrow, .hero-text h1, .hero-text .byline, .hero-text .scroll-cue,
+  .hero-photo {
+    animation-duration: .01ms; animation-delay: 0ms;
+  }
+  .hero-photo img { transition: none; }
+  button.hero-photo:hover img, button.hero-photo:focus-visible img { transform: none; }
+  .hero-photo-anchor:hover img { transform: none; }
+  .cls-vert-mask > canvas { animation: none; }
+}
+
+/* ==========================================================================
+   Solution stage: AI appears -> scans arrive (clear of the AI's box and the
+   canvas edges) -> AI checks -> AI sorts scans into ONE row, green..yellow..
+   red (red furthest right), with the row kept left of where the doctor
+   later appears -> zoom out (AI shrinks to the left and stays there; doctor
+   fades in on the right; the row does NOT re-pack or move at this step) ->
+   scans fly straight from their row slot to the doctor, using the SAME
+   (x, 58) hand-off row the Problem stage already uses.
+   Reuses .problem-window / .problem-canvas / .problem-copy / the
+   .problem-scan-tag-* colour classes from the Problem stage above.
+   AI.svg groups used: freepik--Brain--inject-244, freepik--Charts--inject-244,
+   freepik--Character--inject-244 (character 1), freepik--character-2--inject-244.
+   ========================================================================== */
+
+.solution-scanline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 3;
+  background: linear-gradient(100deg, transparent 42%, rgba(29, 122, 171, .35) 50%, transparent 58%);
+  background-size: 260% 100%;
+  background-position: 130% 0;
+}
+.solution-canvas.is-checking .solution-scanline {
+  opacity: 1;
+  animation: solutionSweep 1.4s ease-in-out 1;
+}
+@keyframes solutionSweep {
+  0% { background-position: 140% 0; }
+  100% { background-position: -40% 0; }
+}
+
+@keyframes solutionCheckPulse {
+  0% { box-shadow: 0 0 0 0 rgba(29, 122, 171, .55); }
+  70% { box-shadow: 0 0 0 12px rgba(29, 122, 171, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(29, 122, 171, 0); }
+}
+.solution-canvas.is-checking .solution-scan {
+  border-radius: 8px;
+  animation: solutionCheckPulse 1.1s ease-out 1;
+}
+
+/* -- AI figure: appear, idle float, zoom out (stays on the left) ------- */
+.solution-ai {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  width: 34%;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.4);
+  transition: left 1s var(--ease-out), top 1s var(--ease-out), width 1s var(--ease-out),
+    opacity .7s var(--ease-out), transform .7s var(--ease-out);
+  z-index: 5;
+}
+.solution-ai.is-visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.solution-canvas.is-zoomed .solution-ai {
+  left: 22%;
+  top: 30%;
+  width: 30%;
+}
+.solution-ai-svg-wrap {
+  width: 100%;
+}
+.solution-ai-svg-wrap svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* idle floating, runs continuously once the AI has appeared */
+.solution-ai.is-visible #freepik--Brain--inject-244 {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: solutionAiFloatBrain 3.2s ease-in-out infinite;
+}
+.solution-ai.is-visible #freepik--Charts--inject-244 {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: solutionAiFloatCharts 3.6s ease-in-out infinite;
+}
+@keyframes solutionAiFloatBrain {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes solutionAiFloatCharts {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* more energetic motion while the AI is actively sorting the scans */
+.solution-ai.is-active #freepik--Brain--inject-244 {
+  animation: solutionAiShakeBrain .5s ease-in-out infinite;
+}
+.solution-ai.is-active #freepik--Charts--inject-244 {
+  animation: solutionAiBounceCharts .6s ease-in-out infinite;
+}
+.solution-ai.is-active #freepik--Character--inject-244 {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: solutionAiWiggleA .8s ease-in-out infinite;
+}
+.solution-ai.is-active #freepik--character-2--inject-244 {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: solutionAiWiggleB .9s ease-in-out infinite;
+}
+@keyframes solutionAiShakeBrain {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(-3px, -2px) rotate(-5deg); }
+  75% { transform: translate(3px, -2px) rotate(5deg); }
+}
+@keyframes solutionAiBounceCharts {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-5px) scale(1.06); }
+}
+@keyframes solutionAiWiggleA {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-3deg); }
+}
+@keyframes solutionAiWiggleB {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(3deg); }
+}
+
+/* -- Doctor: identical position to .problem-doctor, just faded in ------ */
+.solution-doctor {
+  position: absolute;
+  right: 3%;
+  bottom: 0;
+  width: 40%;
+  opacity: 0;
+  transition: opacity .9s var(--ease-out);
+  z-index: 4;
+}
+.solution-canvas.is-zoomed .solution-doctor {
+  opacity: 1;
+}
+.solution-doctor svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.solution-scans {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+}
+.solution-scan {
+  position: absolute;
+  width: 15%;
+  aspect-ratio: 92 / 72;
+  opacity: 0;
+  transition: left .6s var(--ease-out), top .6s var(--ease-out), transform .6s var(--ease-out), opacity .5s linear;
+}
+.solution-scan.no-anim {
+  transition: none;
+}
+@keyframes solutionScanNotice {
+  0%, 100% { transform: scale(.45) translateY(0) rotate(0deg); }
+  25% { transform: scale(.45) translateY(-7px) rotate(-7deg); }
+  50% { transform: scale(.45) translateY(-10px) rotate(6deg); }
+  75% { transform: scale(.45) translateY(-4px) rotate(-5deg); }
+}
+.solution-scan.is-noticed {
+  animation: solutionScanNotice 1.1s ease-in-out 1;
+}
+.solution-ai.no-anim,
+.solution-doctor.no-anim {
+  transition: none !important;
+}
+.solution-scan svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+@media (max-width: 760px) {
+  .solution-ai { top: 26%; width: 42%; }
+}

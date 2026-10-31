@@ -1,0 +1,43 @@
+{
+ "azimuthStep": 5,
+ "elevation": 10,
+ "frames": 72,
+ "cols": 12,
+ "sprites": {
+  "vertebra-1": {
+   "file": "turntable/vertebra-1.webp",
+   "size": 200,
+   "pxPerMm": 1.9999100317058498
+  },
+  "vertebra-2": {
+   "file": "turntable/vertebra-2.webp",
+   "size": 200,
+   "pxPerMm": 2.120069683773829
+  },
+  "vertebra-3": {
+   "file": "turntable/vertebra-3.webp",
+   "size": 200,
+   "pxPerMm": 2.426103907001076
+  },
+  "vertebra-4": {
+   "file": "turntable/vertebra-4.webp",
+   "size": 200,
+   "pxPerMm": 2.44925959422134
+  },
+  "vertebra-5": {
+   "file": "turntable/vertebra-5.webp",
+   "size": 200,
+   "pxPerMm": 2.3864277245001846
+  },
+  "vertebra-6": {
+   "file": "turntable/vertebra-6.webp",
+   "size": 200,
+   "pxPerMm": 2.231734328973918
+  },
+  "vertebra-7": {
+   "file": "turntable/vertebra-7.webp",
+   "size": 200,
+   "pxPerMm": 1.944895135293256
+  }
+ }
+}

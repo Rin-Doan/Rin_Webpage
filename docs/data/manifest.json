@@ -1,0 +1,46 @@
+{
+  "cases": [
+    {
+      "case_id": "1.2.826.0.1.3680043.10062",
+      "description": "CT volume, 323\u00d7186\u00d7186 voxels at 0.70mm spacing; 9 vertebrae segmented.",
+      "n_vertebrae": 9,
+      "n_fractured": 0
+    },
+    {
+      "case_id": "1.2.826.0.1.3680043.11254",
+      "description": "CT volume, 274\u00d7229\u00d7229 voxels at 0.70mm spacing; 9 vertebrae segmented.",
+      "n_vertebrae": 9,
+      "n_fractured": 1
+    },
+    {
+      "case_id": "1.2.826.0.1.3680043.11644",
+      "description": "CT volume, 380\u00d7240\u00d7240 voxels at 0.70mm spacing; 9 vertebrae segmented.",
+      "n_vertebrae": 9,
+      "n_fractured": 2
+    },
+    {
+      "case_id": "1.2.826.0.1.3680043.11659",
+      "description": "CT volume, 297\u00d7217\u00d7217 voxels at 0.70mm spacing; 9 vertebrae segmented.",
+      "n_vertebrae": 9,
+      "n_fractured": 1
+    },
+    {
+      "case_id": "1.2.826.0.1.3680043.21326",
+      "description": "CT volume, 286\u00d7243\u00d7243 voxels at 0.70mm spacing; 9 vertebrae segmented.",
+      "n_vertebrae": 9,
+      "n_fractured": 1
+    },
+    {
+      "case_id": "1.2.826.0.1.3680043.2507",
+      "description": "CT volume, 309\u00d7160\u00d7160 voxels at 0.70mm spacing; 9 vertebrae segmented.",
+      "n_vertebrae": 9,
+      "n_fractured": 1
+    },
+    {
+      "case_id": "1.2.826.0.1.3680043.9921",
+      "description": "CT volume, 300\u00d7334\u00d7334 voxels at 0.70mm spacing; 9 vertebrae segmented.",
+      "n_vertebrae": 9,
+      "n_fractured": 3
+    }
+  ]
+}
